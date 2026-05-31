@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 5% 13%;
+    --foreground: 0 0% 100%;
+    --card: 240 5% 15%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 5% 13%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 244 100% 74%;
+    --primary-foreground: 240 5% 10%;
+    --secondary: 240 5% 20%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 5% 25%;
+    --muted-foreground: 240 5% 75%;
+    --accent: 221 100% 84%;
+    --accent-foreground: 240 5% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 5% 25%;
+    --input: 240 5% 25%;
+    --ring: 244 100% 74%;
+    --chart-1: 244 100% 74%;
+    --chart-2: 221 100% 84%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.75rem;
+    --sidebar-background: 240 5% 11%;
+    --sidebar-foreground: 240 5% 90%;
+    --sidebar-primary: 244 100% 74%;
+    --sidebar-primary-foreground: 240 5% 10%;
+    --sidebar-accent: 240 5% 18%;
+    --sidebar-accent-foreground: 244 100% 74%;
+    --sidebar-border: 240 5% 18%;
+    --sidebar-ring: 244 100% 74%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-headline tracking-tight text-white;
+  }
+
+  /* Custom Scrollbar - Rumah Premium Style */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 10px;
+    border: 2px solid hsl(var(--background));
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary));
+  }
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.glass-morphism {
+  background: rgba(33, 33, 33, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}

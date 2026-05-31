@@ -1,0 +1,23 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "hero-dashboard",
+      "description": "Abstract tech dashboard",
+      "imageUrl": "https://picsum.photos/seed/tech1/1200/800",
+      "imageHint": "tech abstract"
+    },
+    {
+      "id": "product-1",
+      "description": "Premium electronics",
+      "imageUrl": "https://picsum.photos/seed/prod1/400/400",
+      "imageHint": "electronics gadget"
+    },
+    {
+      "id": "product-2",
+      "description": "Industrial tool",
+      "imageUrl": "https://picsum.photos/seed/prod2/400/400",
+      "imageHint": "industrial hardware"
+    }
+  ]
+}
