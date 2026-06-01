@@ -215,13 +215,27 @@ export async function editRole(id, role) {
   }
 }
 
-export async function checkUser(id) {
+function mapUser(user) {
+  if (!user) return false;
+  const plain = typeof user.toObject === "function" ? user.toObject() : user;
+  return {
+    id: plain.id,
+    name: plain.name || "No Name",
+    balance: typeof plain.balance === "number" ? plain.balance : 0,
+    isPremium: plain.role === "premium",
+  };
+}
+
+export async function checkUser(id, name) {
   const key = `checkUser:${id}`;
   if (cache.has(key)) return cache.get(key);
   await connectDB();
   try {
-    const exist = await User.findOne({ id }).lean();
-    const res = { success: true, data: !!exist };
+    let exist = await User.findOne({ id });
+    if (!exist && name) {
+      exist = await User.create({ id, name });
+    }
+    const res = { success: true, data: mapUser(exist) };
     cache.set(key, res);
     return res;
   } catch (err) {
@@ -235,7 +249,7 @@ export async function dbUser(id) {
   await connectDB();
   try {
     const exist = await User.findOne({ id });
-    const res = { success: true, data: exist };
+    const res = { success: true, data: mapUser(exist) };
     cache.set(key, res);
     return res;
   } catch (err) {
@@ -372,7 +386,8 @@ export async function addStock(botId, productId, accounts = []) {
   try {
     const product = await Product.findOne({ botId, id: productId });
     if (!product) return { success: false, error: "Produk tidak ditemukan." };
-    product.account.push(...accounts);
+    const accountsArray = Array.isArray(accounts) ? accounts : [];
+    product.account.push(...accountsArray);
     await product.save();
     return { success: true, data: product };
   } catch (err) {

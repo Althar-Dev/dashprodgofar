@@ -7,11 +7,12 @@ function unauthorized() {
   return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
 }
 
-export async function POST(request: Request, { params }: { params: { slug?: string[] } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ slug?: string[] }> }) {
   const apiKey = request.headers.get("x-api-key") || "";
   if (apiKey !== DEFAULT_API_KEY) return unauthorized();
 
-  const slug = params?.slug || [];
+  const resolvedParams = await params;
+  const slug = resolvedParams?.slug || [];
   const path = slug.join("/");
   const body = await request.json().catch(() => ({}));
 
@@ -22,7 +23,10 @@ export async function POST(request: Request, { params }: { params: { slug?: stri
 
     // user
     if (path === "user/check") {
-      return NextResponse.json(await db.checkUser(body.id));
+      console.log("[API] user/check body=", body);
+      const result = await db.checkUser(body.id, body.name);
+      console.log("[API] user/check result=", result);
+      return NextResponse.json(result);
     }
     if (path === "user/balance") return NextResponse.json(await db.editUser(body.id, { balance: body.amount }));
 
@@ -32,12 +36,20 @@ export async function POST(request: Request, { params }: { params: { slug?: stri
 
     // product list by bot: product/list/:botId
     if (slug[0] === "product" && slug[1] === "list" && slug[2]) {
-      return NextResponse.json(await db.getProductList(slug[2]));
+      const botId = isNaN(Number(slug[2])) ? slug[2] : Number(slug[2]);
+      const productsRes = await db.getProductList(botId);
+      if (!productsRes.success) return NextResponse.json(productsRes);
+      return NextResponse.json({
+        success: true,
+        data: productsRes.data,
+      });
     }
 
-    // product actions
     if (path === "product/add") return NextResponse.json(await db.addProduct(body.botId, body));
-    if (path === "product/stock") return NextResponse.json(await db.addProductStock(body.botId, body.id, body.accounts || []));
+    if (path === "product/stock") {
+      const accounts = Array.isArray(body.accounts) ? body.accounts : [];
+      return NextResponse.json(await db.addProductStock(body.botId, body.id, accounts));
+    }
     if (path === "product/delete") return NextResponse.json(await db.deleteProduct(body.botId, body.id));
     if (path === "product/edit") {
       if (body.newId) return NextResponse.json(await db.editProductID(body.botId, body.id, body.newId));
@@ -74,13 +86,20 @@ export async function POST(request: Request, { params }: { params: { slug?: stri
   }
 }
 
-export async function GET(request: Request, { params }: { params: { slug?: string[] } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ slug?: string[] }> }) {
   const apiKey = request.headers.get("x-api-key") || "";
   if (apiKey !== DEFAULT_API_KEY) return unauthorized();
-  const slug = params?.slug || [];
+  const resolvedParams = await params;
+  const slug = resolvedParams?.slug || [];
   // handle GET product list: /product/list/:botId
   if (slug[0] === "product" && slug[1] === "list" && slug[2]) {
-    return NextResponse.json(await db.getProductList(slug[2]));
+    const botId = isNaN(Number(slug[2])) ? slug[2] : Number(slug[2]);
+    const productsRes = await db.getProductList(botId);
+    if (!productsRes.success) return NextResponse.json(productsRes);
+    return NextResponse.json({
+      success: true,
+      data: productsRes.data,
+    });
   }
   return NextResponse.json({ success: false, error: "Endpoint tidak ditemukan." }, { status: 404 });
 }
