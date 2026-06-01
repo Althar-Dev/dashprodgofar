@@ -68,12 +68,45 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     // transactions
     if (path === "transaction/process") {
       const payload = body;
-      const takeRes = await db.takeProductAccount(payload.botId, payload.productId, payload.quantity || 1);
+      const botId = isNaN(Number(payload.botId)) ? payload.botId : Number(payload.botId);
+      const productId = payload.productId ?? payload.id;
+      if (!productId) {
+        return NextResponse.json({ success: false, error: "productId is required." });
+      }
+      const quantity = Number(payload.quantity ?? payload.qty ?? 1) || 1;
+      const unitPrice = payload.price ?? payload.total ?? (payload.totalAmount !== undefined ? Number(payload.totalAmount) / quantity : 0);
+      const totalAmount = payload.totalAmount !== undefined ? Number(payload.totalAmount) : unitPrice * quantity;
+      const takeRes = await db.takeProductAccount(botId, productId, quantity);
       if (!takeRes.success) return NextResponse.json(takeRes);
       const accounts = takeRes.data || [];
-      const history = await db.addTransactionHistory(payload.userId, payload.botId, payload.productId, payload.productName || "", payload.quantity || 1, payload.price || 0, accounts, payload.status || "completed", payload.paymentMethod || "balance", payload.snk || "", payload.reffId || "");
-      await db.recordSale(payload.botId, payload.productId, payload.quantity || 1, (payload.price || 0) * (payload.quantity || 1));
-      return NextResponse.json(history);
+      let productName = payload.productName;
+      if (!productName) {
+        const detailRes = await db.getProductDetails(botId, productId);
+        productName = detailRes.success && detailRes.data ? detailRes.data.name : productId;
+      }
+      const history = await db.addTransactionHistory(
+        payload.userId,
+        botId,
+        productId,
+        productName,
+        quantity,
+        unitPrice,
+        accounts,
+        payload.status || "completed",
+        payload.paymentMethod || "balance",
+        payload.snk || "",
+        payload.reffId || ""
+      );
+      if (!history.success) return NextResponse.json(history);
+      await db.recordSale(botId, productId, quantity, totalAmount);
+      return NextResponse.json({
+        success: true,
+        data: {
+          accounts,
+          snk: payload.snk || "",
+          transaction: history.data,
+        },
+      });
     }
 
     if (path === "transaction/add") return NextResponse.json(await db.addTransactionHistory(body.userId, body.botId, body.productId, body.productName, body.quantity, body.price, body.accounts || [], body.status || "completed", body.paymentMethod || "balance"));
