@@ -8,7 +8,7 @@ import {
   addProduct,
   deleteProduct as deletePlaceholderProduct,
   deleteCategoryWithProducts as deletePlaceholderCategory,
-  addProductStock as addPlaceholderStock,
+  addProductStock,
   addProductToCategory,
   updateProduct,
 } from "@/lib/db";
@@ -31,7 +31,6 @@ export async function GET(req: Request) {
     await connectDB();
     if (view === 'categories') {
       const categories = await Category.find({ botId }).lean();
-      // return name and product count
       const data = categories.map(c => ({ name: c.name, products: c.products || [], count: (c.products || []).length }));
       return NextResponse.json({ success: true, data });
     }
@@ -76,7 +75,6 @@ export async function POST(req: Request) {
 
     await connectDB();
 
-    // Create Category if payload contains `category`
     if (category && category.name) {
       const existsCat = await Category.exists({ botId, name: category.name });
       if (existsCat) return NextResponse.json({ success: false, error: "Category already exists." }, { status: 409 });
@@ -84,7 +82,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, data: createdCat });
     }
 
-    // Otherwise expect product payload
     if (!product || !product.id) {
       return NextResponse.json({ success: false, error: "product with id required" }, { status: 400 });
     }
@@ -107,7 +104,6 @@ export async function DELETE(req: Request) {
 
     if (!botId) return NextResponse.json({ success: false, error: "botId required" }, { status: 400 });
     
-    // Delete Category and its products
     if (categoryName) {
       if (placeholderMode) {
         return NextResponse.json(await deletePlaceholderCategory(botId, categoryName));
@@ -121,7 +117,6 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    // Delete Single Product
     if (productId) {
       if (placeholderMode) {
         return NextResponse.json(await deletePlaceholderProduct(botId, productId));
@@ -129,7 +124,6 @@ export async function DELETE(req: Request) {
       await connectDB();
       const res = await Product.deleteOne({ botId, id: productId });
       if (res.deletedCount === 0) return NextResponse.json({ success: false, error: "Produk tidak ditemukan." }, { status: 404 });
-      // Remove from category lists
       await Category.updateMany({ botId }, { $pull: { products: productId } });
       return NextResponse.json({ success: true });
     }
@@ -160,7 +154,7 @@ export async function PUT(req: Request) {
         if (accounts.length === 0) {
           return NextResponse.json({ success: false, error: "accounts array required" }, { status: 400 });
         }
-        return NextResponse.json(await addPlaceholderStock(botId, id, accounts));
+        return NextResponse.json(await addProductStock(botId, id, accounts));
       }
 
       if (!id || !updates) return NextResponse.json({ success: false, error: "id and updates required" }, { status: 400 });
@@ -169,7 +163,6 @@ export async function PUT(req: Request) {
 
     await connectDB();
 
-    // Handle adding product id to a category
     if (categoryUpdate && categoryUpdate.name && categoryUpdate.addProductId) {
       const res = await Category.findOneAndUpdate(
         { botId, name: categoryUpdate.name },
@@ -197,6 +190,19 @@ export async function PUT(req: Request) {
     }
 
     if (!id || !updates) return NextResponse.json({ success: false, error: "id and updates required" }, { status: 400 });
+    
+    if (updates.category !== undefined) {
+      const newCatName = updates.category;
+      await Category.updateMany({ botId }, { $pull: { products: id } });
+      if (newCatName && newCatName !== "General") {
+        await Category.findOneAndUpdate(
+          { botId, name: newCatName },
+          { $addToSet: { products: id } },
+          { upsert: true }
+        );
+      }
+    }
+
     const updated = await Product.findOneAndUpdate({ botId, id }, updates, { new: true });
     if (!updated) return NextResponse.json({ success: false, error: "Produk tidak ditemukan." }, { status: 404 });
     return NextResponse.json({ success: true, data: updated });

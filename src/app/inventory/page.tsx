@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect, useState, Suspense, useCallback } from 'react';
@@ -27,7 +26,8 @@ import {
   CreditCard,
   ClipboardCheck,
   AlertTriangle,
-  Layers
+  Layers,
+  XCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -171,16 +171,10 @@ function InventoryContent() {
     name: ''
   });
 
-  /**
-   * SAFETY GUARD: Masalah UI "beku" biasanya karena pointer-events: none 
-   * tertinggal di body setelah dialog ditutup. Hook ini memastikan body selalu 
-   * interaktif saat tidak ada dialog aktif.
-   */
   useEffect(() => {
     const isAnyDialogOpen = isAddOpen || !!editingProduct || isStockOpen || !!selectedProductView || confirmDelete.isOpen;
     
     if (!isAnyDialogOpen) {
-      // Tunggu sebentar agar Radix UI selesai melakukan transisi penutupan internalnya
       const timer = setTimeout(() => {
         document.body.style.pointerEvents = 'auto';
         document.body.style.overflow = 'auto';
@@ -332,13 +326,23 @@ function InventoryContent() {
       (async () => {
         try {
           const BOT_ID = 220208;
-          const payload = { botId: BOT_ID, id: editingProduct.id, updates: { name: formData.name, price: formData.price, desc: formData.description, snk: formData.snk || "" } };
+          const payload = { 
+            botId: BOT_ID, 
+            id: editingProduct.id, 
+            updates: { 
+              name: formData.name, 
+              price: formData.price, 
+              desc: formData.description, 
+              snk: formData.snk || "",
+              category: formData.category // Move function added here
+            } 
+          };
           const res = await fetch('/api/products', { method: 'PUT', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
           const json = await res.json();
           if (json.success) {
             setEditingProduct(null);
             loadData();
-            toast({ title: "Updated", description: "Product record synchronized" });
+            toast({ title: "Updated", description: "Product record synchronized and moved if category changed." });
           } else {
             toast({ title: 'Error', description: json.error || 'Failed to update', variant: 'destructive' });
           }
@@ -465,9 +469,8 @@ function InventoryContent() {
     : products
   )
   .filter(p => 
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.sku.toLowerCase().includes(search.toLowerCase()) ||
-    p.category.toLowerCase().includes(search.toLowerCase())
+    (p.name?.toLowerCase() || "").includes(search.toLowerCase()) ||
+    (p.sku?.toLowerCase() || "").includes(search.toLowerCase())
   );
 
   const gridClasses = cn(
@@ -488,6 +491,7 @@ function InventoryContent() {
             {selectedCategory && (
               <Button variant="outline" size="sm" className="text-white text-[10px] md:text-sm flex items-center gap-2" onClick={() => {
                 setSelectedCategory(null);
+                setSearch("");
                 router.replace('/inventory');
               }}>
                 <ChevronLeft className="w-2 h-2 md:w-4 md:h-4" />
@@ -611,7 +615,7 @@ function InventoryContent() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
               placeholder="Search catalog..." 
-              className="pl-9 bg-secondary/30 border-none h-10 text-xs md:text-sm text-white rounded-xl"
+              className="pl-9 bg-secondary/30 border-none h-10 text-xs md:text-sm text-white rounded-xl focus-visible:ring-1 focus-visible:ring-primary"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
@@ -624,7 +628,7 @@ function InventoryContent() {
         </div>
 
         <div className={gridClasses}>
-          {!selectedCategory ? (
+          {!selectedCategory && search === "" ? (
             <>
               {categories.map((c) => (
                 <Card key={c.name} className="bg-card/40 border-white/5 hover:bg-card/60 transition-all duration-300 group overflow-hidden shadow-xl rounded-2xl cursor-pointer" onClick={() => {
@@ -681,80 +685,94 @@ function InventoryContent() {
               </Card>
             </>
           ) : (
-            filteredProducts.map((p) => (
-              <Card key={p.id} onClick={(e) => { const el = e.target as HTMLElement; if (el.closest('button')) return; setSelectedProductView(p); }} className="bg-card/40 border-white/5 hover:bg-card/60 transition-all duration-300 group overflow-hidden shadow-xl rounded-2xl cursor-pointer">
-              <CardHeader className="p-3 md:p-6 pb-2">
-                <div className="flex justify-between items-start">
-                  <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 font-mono text-[9px] md:text-[10px] tracking-tighter px-1 rounded-sm">
-                    {p.sku}
-                  </Badge>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7 md:h-8 md:w-8 -mt-1 -mr-2 hover:bg-destructive/20 hover:text-destructive rounded-full"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      triggerDeleteProduct(p.id, p.name);
-                    }}
-                  >
-                    <Trash className="h-3 w-3 md:h-4 md:w-4 text-destructive" />
-                  </Button>
-                </div>
-                <CardTitle className="text-xs md:text-lg font-headline mt-2 line-clamp-1 text-white">{p.name}</CardTitle>
-                <CardDescription className="text-[10px] md:text-xs line-clamp-1 md:line-clamp-2 min-h-[14px] md:min-h-[32px] text-muted-foreground leading-relaxed">
-                  {p.description}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-3 md:p-6 space-y-3 md:space-y-4 pt-2">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-2 md:gap-0">
-                  <div className="space-y-0.5 md:space-y-1">
-                    <p className="text-[8px] md:text-[10px] text-muted-foreground uppercase tracking-widest font-bold">In Inventory</p>
-                    <div className="flex items-center gap-1.5 md:gap-2">
-                      <span className={cn(
-                        "text-base md:text-2xl font-bold font-headline",
-                        p.stock <= p.minStock ? "text-destructive animate-pulse" : "text-emerald-500"
-                      )}>
-                        {p.stock}
-                      </span>
-                      <div className="flex flex-col">
-                        <span className="text-[8px] md:text-[10px] text-muted-foreground">units</span>
+            <>
+              {filteredProducts.map((p) => (
+                <Card key={p.id} onClick={(e) => { const el = e.target as HTMLElement; if (el.closest('button')) return; setSelectedProductView(p); }} className="bg-card/40 border-white/5 hover:bg-card/60 transition-all duration-300 group overflow-hidden shadow-xl rounded-2xl cursor-pointer">
+                  <CardHeader className="p-3 md:p-6 pb-2">
+                    <div className="flex justify-between items-start">
+                      <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 font-mono text-[9px] md:text-[10px] tracking-tighter px-1 rounded-sm">
+                        {p.sku}
+                      </Badge>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-7 w-7 md:h-8 md:w-8 -mt-1 -mr-2 hover:bg-destructive/20 hover:text-destructive rounded-full"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerDeleteProduct(p.id, p.name);
+                        }}
+                      >
+                        <Trash className="h-3 w-3 md:h-4 md:w-4 text-destructive" />
+                      </Button>
+                    </div>
+                    <CardTitle className="text-xs md:text-lg font-headline mt-2 line-clamp-1 text-white">{p.name}</CardTitle>
+                    <CardDescription className="text-[10px] md:text-xs line-clamp-1 md:line-clamp-2 min-h-[14px] md:min-h-[32px] text-muted-foreground leading-relaxed">
+                      {p.description}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-3 md:p-6 space-y-3 md:space-y-4 pt-2">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-2 md:gap-0">
+                      <div className="space-y-0.5 md:space-y-1">
+                        <p className="text-[8px] md:text-[10px] text-muted-foreground uppercase tracking-widest font-bold">In Inventory</p>
+                        <div className="flex items-center gap-1.5 md:gap-2">
+                          <span className={cn(
+                            "text-base md:text-2xl font-bold font-headline",
+                            p.stock <= p.minStock ? "text-destructive animate-pulse" : "text-emerald-500"
+                          )}>
+                            {p.stock}
+                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-[8px] md:text-[10px] text-muted-foreground">units</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-left md:text-right">
+                        <p className="text-[8px] md:text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Valuation</p>
+                        <p className="text-sm md:text-2xl font-headline font-bold text-accent tracking-tighter">
+                          Rp {p.price.toLocaleString('id-ID')}
+                        </p>
                       </div>
                     </div>
-                  </div>
-                  <div className="text-left md:text-right">
-                    <p className="text-[8px] md:text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Valuation</p>
-                    <p className="text-sm md:text-2xl font-headline font-bold text-accent tracking-tighter">
-                      Rp {p.price.toLocaleString('id-ID')}
-                    </p>
-                  </div>
-                </div>
 
-                <div className="space-y-1 md:space-y-1.5 hidden md:block">
-                  <div className="flex justify-between text-[10px] font-medium text-muted-foreground">
-                    <span>Stock Level</span>
-                    <span>{Math.round((p.stock / (p.minStock * 5 || 5)) * 100)}%</span>
-                  </div>
-                  <Progress 
-                    value={Math.min((p.stock / (p.minStock * 5 || 5)) * 100, 100)} 
-                    className={cn(
-                      "h-1 bg-white/5",
-                      p.stock <= p.minStock ? "[&>div]:bg-destructive" : "[&>div]:bg-emerald-500"
-                    )} 
-                  />
-                </div>
+                    <div className="space-y-1 md:space-y-1.5 hidden md:block">
+                      <div className="flex justify-between text-[10px] font-medium text-muted-foreground">
+                        <span>Stock Level</span>
+                        <span>{Math.round((p.stock / (p.minStock * 5 || 5)) * 100)}%</span>
+                      </div>
+                      <Progress 
+                        value={Math.min((p.stock / (p.minStock * 5 || 5)) * 100, 100)} 
+                        className={cn(
+                          "h-1 bg-white/5",
+                          p.stock <= p.minStock ? "[&>div]:bg-destructive" : "[&>div]:bg-emerald-500"
+                        )} 
+                      />
+                    </div>
 
-                <div className="flex justify-between items-center pt-2 md:pt-3 border-t border-white/5 text-[8px] md:text-[10px] text-muted-foreground">
-                  <span className="flex items-center gap-1 truncate max-w-[60px] md:max-w-[100px]">
-                    <Package className="w-2.5 h-2.5 md:w-3 md:h-3 text-primary" /> {p.category}
-                  </span>
-                  <span className="flex items-center gap-1 truncate max-w-[60px] md:max-w-[120px]">
-                    <Truck className="w-2.5 h-2.5 md:w-3 md:h-3 text-accent" /> {p.supplier?.name || 'In-House'}
-                  </span>
+                    <div className="flex justify-between items-center pt-2 md:pt-3 border-t border-white/5 text-[8px] md:text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1 truncate max-w-[60px] md:max-w-[100px]">
+                        <Package className="w-2.5 h-2.5 md:w-3 md:h-3 text-primary" /> {p.category}
+                      </span>
+                      <span className="flex items-center gap-1 truncate max-w-[60px] md:max-w-[120px]">
+                        <Truck className="w-2.5 h-2.5 md:w-3 md:h-3 text-accent" /> {p.supplier?.name || 'In-House'}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {filteredProducts.length === 0 && (
+                <div className="col-span-full py-20 text-center space-y-4 animate-in fade-in duration-500">
+                  <XCircle className="w-12 h-12 text-muted-foreground/20 mx-auto" />
+                  <div className="space-y-1">
+                    <p className="text-white font-headline text-lg">No matches found</p>
+                    <p className="text-muted-foreground text-sm">We couldn&apos;t find any assets matching &quot;{search}&quot;</p>
+                  </div>
+                  <Button variant="outline" onClick={() => setSearch("")} className="rounded-xl border-white/10 text-white hover:bg-white/5">
+                    Clear Search
+                  </Button>
                 </div>
-              </CardContent>
-              </Card>
-            )))
-          }
+              )}
+            </>
+          )}
         </div>
 
         <div className="flex items-center justify-between pt-4 border-t border-white/5">
@@ -894,19 +912,20 @@ function InventoryContent() {
               }} className="flex-1 sm:flex-none h-10 md:h-11 px-4 md:px-8 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest text-white border-white/10 hover:bg-white/5 transition-all">Add Stock</Button>
               <Button type="button" onClick={() => { 
                 const current = selectedProductView;
+                const currentCat = categories.find(c => c.products?.includes(current.id))?.name || 'General';
                 setSelectedProductView(null);
                 setTimeout(() => {
                   setEditingProduct(current);
                   setFormData({
-                    sku: current.sku,
+                    sku: current.id,
                     name: current.name,
                     description: current.description,
                     price: current.price,
                     snk: current.snk || "",
                     stock: current.stock,
-                    minStock: current.minStock,
-                    category: current.category,
-                    supplierId: current.supplierId
+                    minStock: 0,
+                    category: currentCat,
+                    supplierId: ""
                   });
                 }, 300);
               }} className="flex-1 sm:flex-none h-10 md:h-11 px-4 md:px-8 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all">Modify Record</Button>
@@ -944,9 +963,25 @@ function InventoryContent() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="edit-price" className="text-xs md:text-sm text-white">Harga (Rp)</Label>
-                <Input id="edit-price" type="number" value={formData.price} onChange={e => setFormData({...formData, price: Number(e.target.value)})} required className="bg-secondary/50 border-none h-9 text-xs md:text-sm text-white rounded-lg" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-price" className="text-xs md:text-sm text-white">Harga (Rp)</Label>
+                  <Input id="edit-price" type="number" value={formData.price} onChange={e => setFormData({...formData, price: Number(e.target.value)})} required className="bg-secondary/50 border-none h-9 text-xs md:text-sm text-white rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs md:text-sm text-white">Assign Category</Label>
+                  <Select value={formData.category} onValueChange={(val) => setFormData({...formData, category: val})}>
+                    <SelectTrigger className="bg-secondary/50 border-none h-9 text-xs md:text-sm text-white rounded-lg">
+                      <SelectValue placeholder="Select Category" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-white/10 text-white">
+                      <SelectItem value="General">General Assets</SelectItem>
+                      {categories.map(c => (
+                        <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">

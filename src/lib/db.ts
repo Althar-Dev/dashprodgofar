@@ -502,13 +502,11 @@ const placeholderDb = {
     
     const productIds = placeholderCategories[index].products || [];
     
-    // Delete all products in category from system
     for (const pid of productIds) {
       const pIdx = placeholderProducts.findIndex(p => p.botId === botId && p.id === pid);
       if (pIdx !== -1) placeholderProducts.splice(pIdx, 1);
     }
     
-    // Delete category
     placeholderCategories.splice(index, 1);
     return { success: true };
   },
@@ -528,6 +526,29 @@ const placeholderDb = {
   updateProduct: async (botId: number, productId: string, updates: Record<string, any>) => {
     const product = placeholderProducts.find((item) => item.botId === botId && item.id === productId);
     if (!product) return { success: false, error: "Product not found." };
+    
+    if (updates.category !== undefined) {
+      const newCategory = updates.category;
+      
+      placeholderCategories.forEach(cat => {
+        if (cat.botId === Number(botId)) {
+          cat.products = cat.products.filter(id => id !== productId);
+        }
+      });
+      
+      if (newCategory && newCategory !== "General") {
+        let catEntry = placeholderCategories.find(c => c.botId === Number(botId) && c.name === newCategory);
+        if (!catEntry) {
+          catEntry = { botId: Number(botId), name: newCategory, products: [] };
+          placeholderCategories.push(catEntry);
+        }
+        if (!catEntry.products.includes(productId)) {
+          catEntry.products.push(productId);
+        }
+      }
+      product.category = newCategory;
+    }
+
     if (updates.id) {
       const exists = placeholderProducts.some((item) => item.botId === botId && item.id === updates.id);
       if (exists) return { success: false, error: "Product ID already exists." };
