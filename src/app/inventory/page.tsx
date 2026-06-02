@@ -20,7 +20,12 @@ import {
   Download,
   Zap,
   Truck,
-  Copy
+  Copy,
+  Info,
+  Hash,
+  BadgeCheck,
+  CreditCard,
+  ClipboardCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -126,7 +131,7 @@ function InventoryContent() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [stockProduct, setStockProduct] = useState<Product | null>(null);
   const [isStockOpen, setIsStockOpen] = useState(false);
-  const [stockAccounts, setStockAccounts] = useState<string[]>([""]);
+  const [stockInput, setStockInput] = useState("");
   const [formData, setFormData] = useState({
     sku: '',
     name: '',
@@ -141,7 +146,7 @@ function InventoryContent() {
   const [selectedProductView, setSelectedProductView] = useState<any | null>(null);
 
   const loadData = () => {
-    const BOT_ID = Number(process.env.NEXT_PUBLIC_BOT_ID) || 220208;
+    const BOT_ID = 220208;
     (async () => {
       try {
         const res = await fetch(`/api/products?botId=${BOT_ID}`);
@@ -194,7 +199,6 @@ function InventoryContent() {
     }
   }, [searchParams]);
 
-  // when opening add dialog inside a selected category, prefill category
   useEffect(() => {
     if (isAddOpen && selectedCategory) {
       setFormData(prev => ({ ...prev, category: selectedCategory }));
@@ -203,11 +207,10 @@ function InventoryContent() {
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    // If no category selected, this dialog is used to create a Category
     if (isCategoryMode) {
       (async () => {
         try {
-          const BOT_ID = Number(process.env.NEXT_PUBLIC_BOT_ID) || 220208;
+          const BOT_ID = 220208;
           const productIds = (formData.description || "").split(',').map(s => s.trim()).filter(Boolean);
           const payload = { botId: BOT_ID, category: { name: formData.name, products: productIds } };
           const res = await fetch('/api/products', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
@@ -228,10 +231,9 @@ function InventoryContent() {
       return;
     }
 
-    // Otherwise, create a product inside the selected category
     (async () => {
       try {
-        const BOT_ID = Number(process.env.NEXT_PUBLIC_BOT_ID) || 220208;
+        const BOT_ID = 220208;
         const payload = {
           botId: BOT_ID,
           product: {
@@ -245,7 +247,6 @@ function InventoryContent() {
         const res = await fetch('/api/products', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
         const json = await res.json();
         if (json.success) {
-          // attach product id to selected category
           const createdId = json.data?.id || payload.product.id;
           try {
             await fetch('/api/products', { method: 'PUT', body: JSON.stringify({ botId: BOT_ID, categoryUpdate: { name: selectedCategory, addProductId: createdId } }), headers: { 'Content-Type': 'application/json' } });
@@ -271,7 +272,7 @@ function InventoryContent() {
     if (editingProduct) {
       (async () => {
         try {
-        const BOT_ID = Number(process.env.NEXT_PUBLIC_BOT_ID) || 220208;
+        const BOT_ID = 220208;
           const payload = { botId: BOT_ID, id: editingProduct.id, updates: { name: formData.name, price: formData.price, desc: formData.description, snk: formData.snk || "" } };
           const res = await fetch('/api/products', { method: 'PUT', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
           const json = await res.json();
@@ -297,10 +298,10 @@ function InventoryContent() {
 
     (async () => {
       try {
-        const BOT_ID = Number(process.env.NEXT_PUBLIC_BOT_ID) || 220208;
-        const accounts = (stockAccounts || []).map(s => s.trim()).filter(Boolean);
+        const BOT_ID = 220208;
+        const accounts = stockInput.split('\n').map(s => s.trim()).filter(Boolean);
         if (accounts.length === 0) {
-          toast({ title: 'No Accounts', description: 'Tambahkan minimal satu Account ID pada field.', variant: 'destructive' });
+          toast({ title: 'No Accounts', description: 'Masukkan minimal satu Account ID (satu per baris).', variant: 'destructive' });
           return;
         }
 
@@ -311,7 +312,7 @@ function InventoryContent() {
           const added = accounts.length;
           setStockProduct(null);
           setIsStockOpen(false);
-          setStockAccounts([""]);
+          setStockInput("");
           loadData();
           toast({ title: 'Stock Updated', description: `Added ${added} units to ${stockProduct.name}` });
         } else {
@@ -337,7 +338,7 @@ function InventoryContent() {
     if (confirm("Delete this product from inventory?")) {
       (async () => {
         try {
-          const BOT_ID = Number(process.env.NEXT_PUBLIC_BOT_ID) || 220208;
+          const BOT_ID = 220208;
           const res = await fetch(`/api/products?botId=${BOT_ID}&id=${encodeURIComponent(id)}`, { method: 'DELETE' });
           const json = await res.json();
           if (json.success) {
@@ -426,7 +427,6 @@ function InventoryContent() {
                   </DialogDescription>
                 </DialogHeader>
 
-                {/* Gunakan overflow-y-auto murni bawaan Tailwind untuk kestabilan mobile */}
                 <div className="flex-1 px-6 min-h-0 overflow-y-auto content-scrollbar">
                   <div className="grid gap-4 py-4">
                     {!selectedCategory ? (
@@ -494,7 +494,7 @@ function InventoryContent() {
 
       <main className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto w-full">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
-          <div className="relative flex-1 max-w-md">
+          <div className="relative flex-1 max-md:mb-2 md:max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
               placeholder="Search catalog..." 
@@ -511,7 +511,6 @@ function InventoryContent() {
         </div>
 
         <div className={gridClasses}>
-          {/* If no category selected, show categories first */}
           {!selectedCategory ? (
             categories.map((c) => (
               <Card key={c.name} className="bg-card/40 border-white/5 hover:bg-card/60 transition-all duration-300 group overflow-hidden shadow-xl rounded-2xl cursor-pointer" onClick={() => {
@@ -538,43 +537,17 @@ function InventoryContent() {
                   <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 font-mono text-[9px] md:text-[10px] tracking-tighter px-1 rounded-sm">
                     {p.sku}
                   </Badge>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8 -mt-1 -mr-2 hover:bg-primary/20 hover:text-primary rounded-full">
-                        <MoreVertical className="h-3 w-3 md:h-4 md:w-4 text-white" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-card border-white/10 rounded-xl">
-                      <DropdownMenuLabel className="text-xs text-white">Product Ops</DropdownMenuLabel>
-                      <DropdownMenuSeparator className="bg-white/5" />
-                      <DropdownMenuItem className="gap-2 text-xs text-white cursor-pointer" onClick={() => {
-                        setStockProduct(p);
-                        setStockAccounts([""]);
-                        setIsStockOpen(true);
-                      }}>
-                        <Plus className="w-4 h-4" /> Add Stock
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="gap-2 text-xs text-white cursor-pointer" onClick={() => {
-                        setEditingProduct(p);
-                        setFormData({
-                          sku: p.sku,
-                          name: p.name,
-                          description: p.description,
-                          price: p.price,
-                          snk: p.snk || "",
-                          stock: p.stock,
-                          minStock: p.minStock,
-                          category: p.category,
-                          supplierId: p.supplierId
-                        });
-                      }}>
-                        <Edit className="w-4 h-4" /> Edit Record
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="gap-2 text-destructive text-xs cursor-pointer" onClick={() => handleDelete(p.id)}>
-                        <Trash className="w-4 h-4" /> Delete Asset
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 md:h-8 md:w-8 -mt-1 -mr-2 hover:bg-destructive/20 hover:text-destructive rounded-full"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(p.id);
+                    }}
+                  >
+                    <Trash className="h-3 w-3 md:h-4 md:w-4 text-destructive" />
+                  </Button>
                 </div>
                 <CardTitle className="text-xs md:text-lg font-headline mt-2 line-clamp-1 text-white">{p.name}</CardTitle>
                 <CardDescription className="text-[10px] md:text-xs line-clamp-1 md:line-clamp-2 min-h-[14px] md:min-h-[32px] text-muted-foreground leading-relaxed">
@@ -608,10 +581,10 @@ function InventoryContent() {
                 <div className="space-y-1 md:space-y-1.5 hidden md:block">
                   <div className="flex justify-between text-[10px] font-medium text-muted-foreground">
                     <span>Stock Level</span>
-                    <span>{Math.round((p.stock / (p.minStock * 5)) * 100)}%</span>
+                    <span>{Math.round((p.stock / (p.minStock * 5 || 5)) * 100)}%</span>
                   </div>
                   <Progress 
-                    value={Math.min((p.stock / (p.minStock * 5)) * 100, 100)} 
+                    value={Math.min((p.stock / (p.minStock * 5 || 5)) * 100, 100)} 
                     className={cn(
                       "h-1 bg-white/5",
                       p.stock <= p.minStock ? "[&>div]:bg-destructive" : "[&>div]:bg-emerald-500"
@@ -624,7 +597,7 @@ function InventoryContent() {
                     <Package className="w-2.5 h-2.5 md:w-3 md:h-3 text-primary" /> {p.category}
                   </span>
                   <span className="flex items-center gap-1 truncate max-w-[60px] md:max-w-[120px]">
-                    <Truck className="w-2.5 h-2.5 md:w-3 md:h-3 text-accent" /> {p.supplier?.name}
+                    <Truck className="w-2.5 h-2.5 md:w-3 md:h-3 text-accent" /> {p.supplier?.name || 'In-House'}
                   </span>
                 </div>
               </CardContent>
@@ -649,38 +622,127 @@ function InventoryContent() {
       </main>
 
       <Dialog open={!!selectedProductView} onOpenChange={(val) => { if(!val) setSelectedProductView(null); }}>
-        <DialogContent className="rounded-2xl w-[95vw] sm:max-w-[700px] max-h-[85dvh] flex flex-col bg-card border-none shadow-2xl p-0 overflow-hidden">
-          <DialogHeader className="p-6 pb-2 shrink-0">
-            <DialogTitle className="font-headline text-xl md:text-2xl text-white">{selectedProductView?.name}</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground mt-1">ID: {selectedProductView?.id} • Price: Rp {selectedProductView?.price?.toLocaleString('id-ID')}</DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 px-6 overflow-y-auto">
-            <div className="grid gap-4 py-2">
-              <div className="space-y-2">
-                <Label className="text-xs md:text-sm text-white">Description</Label>
-                <p className="text-sm text-muted-foreground leading-relaxed">{selectedProductView?.description || '-'}</p>
-              </div>
+        <DialogContent className="rounded-[1.5rem] md:rounded-[2.5rem] w-[95vw] sm:max-w-[650px] max-h-[92dvh] md:max-h-[90dvh] flex flex-col bg-background/40 backdrop-blur-2xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] p-0 overflow-hidden animate-in fade-in zoom-in duration-300">
+          
+          <div className="h-20 md:h-32 bg-gradient-to-br from-primary/30 via-accent/20 to-transparent relative shrink-0">
+             <div className="absolute inset-0 bg-[url('https://placehold.co/600x400/png?text=')] opacity-10 mix-blend-overlay"></div>
+             <div className="absolute -bottom-6 md:-bottom-10 left-6 md:left-8">
+                <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-card border-2 md:border-4 border-background flex items-center justify-center shadow-2xl relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 group-hover:opacity-100 transition-opacity"></div>
+                  <Package className="w-8 h-8 md:w-12 md:h-12 text-primary relative z-10" />
+                </div>
+             </div>
+             <div className="absolute bottom-3 md:bottom-4 right-6 md:right-8 flex items-center gap-2">
+                <Badge className="bg-emerald-500/20 text-emerald-400 border-none px-2 md:px-3 py-0.5 md:py-1 text-[10px] md:text-sm font-headline backdrop-blur-md">
+                   STOCK READY
+                </Badge>
+             </div>
+          </div>
 
-              <div className="space-y-2">
-                <Label className="text-xs md:text-sm text-white">Stock Entries ({(selectedProductView?.account || []).length})</Label>
-                <ScrollArea className="h-48 bg-secondary/10 p-2 rounded-md">
-                  <div className="space-y-2">
-                    {(selectedProductView?.account || []).map((acc: string, i: number) => (
-                      <div key={i} className="flex items-center justify-between p-2 bg-card/10 rounded-md">
-                        <div className="truncate text-sm text-white">{acc}</div>
-                        <div className="text-[11px] text-muted-foreground">#{i+1}</div>
-                      </div>
-                    ))}
-                    {((selectedProductView?.account || []).length === 0) && (
-                      <div className="text-xs text-muted-foreground">No account entries stored for this product.</div>
-                    )}
-                  </div>
-                </ScrollArea>
+          <div className="mt-8 md:mt-12 px-6 md:px-8 pb-4 md:pb-6 space-y-4 md:space-y-6 flex-1 overflow-y-auto content-scrollbar">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-4">
+              <div className="space-y-0.5 md:space-y-1">
+                <DialogTitle className="text-xl md:text-3xl font-headline font-bold text-white tracking-tight">
+                  {selectedProductView?.name}
+                </DialogTitle>
+                <DialogDescription className="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-xs text-muted-foreground uppercase tracking-widest font-bold">
+                  <Hash className="w-2.5 h-2.5 md:w-3 md:h-3" /> {selectedProductView?.id}
+                  <span className="w-1 h-1 rounded-full bg-white/20"></span>
+                  <BadgeCheck className="w-2.5 h-2.5 md:w-3 md:h-3 text-primary" /> Premium Asset
+                </DialogDescription>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl md:rounded-2xl p-2.5 md:px-6 md:py-4 flex flex-col items-start md:items-end">
+                <span className="text-[8px] md:text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Current Price</span>
+                <span className="text-lg md:text-3xl font-headline font-bold text-accent tracking-tighter">
+                  Rp {selectedProductView?.price?.toLocaleString('id-ID')}
+                </span>
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-3 md:gap-4">
+               <div className="p-3 md:p-4 rounded-2xl md:rounded-3xl bg-white/5 border border-white/10 space-y-1 md:space-y-2">
+                  <div className="flex items-center gap-1.5 md:gap-2 text-[8px] md:text-[10px] text-muted-foreground uppercase font-bold">
+                    <CreditCard className="w-2.5 h-2.5 md:w-3 md:h-3 text-primary" /> Units Available
+                  </div>
+                  <div className="text-lg md:text-2xl font-headline font-bold text-white">{(selectedProductView?.account || []).length} <span className="text-[10px] md:text-xs text-muted-foreground font-body">PCS</span></div>
+               </div>
+               <div className="p-3 md:p-4 rounded-2xl md:rounded-3xl bg-white/5 border border-white/10 space-y-1 md:space-y-2">
+                  <div className="flex items-center gap-1.5 md:gap-2 text-[8px] md:text-[10px] text-muted-foreground uppercase font-bold">
+                    <Zap className="w-2.5 h-2.5 md:w-3 md:h-3 text-accent" /> Total Value
+                  </div>
+                  <div className="text-lg md:text-2xl font-headline font-bold text-white truncate">
+                    Rp {((selectedProductView?.account?.length || 0) * (selectedProductView?.price || 0)).toLocaleString('id-ID')}
+                  </div>
+               </div>
+            </div>
+
+            <div className="space-y-2 md:space-y-3">
+              <div className="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-xs font-bold text-white/50 uppercase tracking-widest">
+                <Info className="w-3.5 h-3.5 md:w-4 md:h-4" /> Description & Features
+              </div>
+              <div className="p-4 md:p-5 rounded-none bg-secondary/20 border border-white/5 leading-relaxed text-xs md:text-sm text-white/80">
+                {selectedProductView?.description || 'No detailed specifications provided for this asset.'}
+              </div>
+            </div>
+
+            <div className="space-y-3 md:space-y-4 pb-2 md:pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-xs font-bold text-white/50 uppercase tracking-widest">
+                  <Hash className="w-3.5 h-3.5 md:w-4 md:h-4" /> Secured Entries
+                </div>
+                <Badge variant="outline" className="rounded-full bg-primary/10 text-primary border-none text-[8px] md:text-[10px]">
+                  ENCRYPTED STORAGE
+                </Badge>
+              </div>
+              
+              <ScrollArea className="h-48 md:h-64 bg-black/20 border border-white/5 p-3 md:p-4 rounded-none">
+                <div className="grid gap-2 md:gap-3">
+                  {(selectedProductView?.account || []).map((acc: string, i: number) => (
+                    <div key={i} className="group flex items-center justify-between p-3 md:p-4 bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 transition-all duration-300 rounded-none">
+                      <div className="flex items-center gap-3 md:gap-4">
+                         <div className="w-8 h-8 md:w-10 md:h-10 bg-white/5 flex items-center justify-center text-[8px] md:text-[10px] font-mono text-white/30 border border-white/5 rounded-none">
+                            {String(i + 1).padStart(2, '0')}
+                         </div>
+                         <div className="font-mono text-xs md:text-sm text-white/90 tracking-tight truncate max-w-[140px] sm:max-w-[200px] md:max-w-[300px]">
+                            {acc}
+                         </div>
+                      </div>
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        className="w-8 h-8 md:w-9 md:h-9 hover:bg-primary/20 hover:text-primary transition-colors rounded-none"
+                        onClick={() => copyAccount(acc)}
+                      >
+                        <Copy className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {((selectedProductView?.account || []).length === 0) && (
+                    <div className="flex flex-col items-center justify-center py-8 md:py-12 text-center space-y-3 md:space-y-4">
+                       <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-white/5 flex items-center justify-center">
+                          <Package className="w-6 h-6 md:w-8 md:h-8 text-white/20" />
+                       </div>
+                       <p className="text-[10px] md:text-xs text-muted-foreground max-w-[180px] md:max-w-[200px]">No active account entries detected in the database.</p>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
           </div>
-          <DialogFooter className="p-6 pt-2 shrink-0 flex flex-row justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setSelectedProductView(null)} className="h-9 text-xs text-white border-white/10 rounded-lg">Close</Button>
+
+          <DialogFooter className="p-4 md:p-6 shrink-0 bg-white/[0.02] border-t border-white/10 flex flex-row items-center justify-end gap-2 md:gap-3">
+              <Button type="button" variant="outline" onClick={() => { setStockProduct(selectedProductView); setStockInput(""); setIsStockOpen(true); setSelectedProductView(null); }} className="flex-1 sm:flex-none h-10 md:h-11 px-4 md:px-8 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest text-white border-white/10 hover:bg-white/5 transition-all">Add Stock</Button>
+              <Button type="button" onClick={() => { setEditingProduct(selectedProductView); setSelectedProductView(null); setFormData({
+                  sku: selectedProductView.sku,
+                  name: selectedProductView.name,
+                  description: selectedProductView.description,
+                  price: selectedProductView.price,
+                  snk: selectedProductView.snk || "",
+                  stock: selectedProductView.stock,
+                  minStock: selectedProductView.minStock,
+                  category: selectedProductView.category,
+                  supplierId: selectedProductView.supplierId
+                }); }} className="flex-1 sm:flex-none h-10 md:h-11 px-4 md:px-8 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all">Modify Record</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -734,36 +796,33 @@ function InventoryContent() {
       </DialogContent>
       </Dialog>
 
-      <Dialog open={isStockOpen} onOpenChange={(val) => { if(!val) { setStockProduct(null); setStockAccounts([""]); } setIsStockOpen(val); }}>
+      <Dialog open={isStockOpen} onOpenChange={(val) => { if(!val) { setStockProduct(null); setStockInput(""); } setIsStockOpen(val); }}>
         <DialogContent className="rounded-2xl w-[95vw] sm:max-w-[550px] max-h-[90dvh] flex flex-col bg-card border-none shadow-2xl p-0 overflow-hidden">
           <form onSubmit={handleAddStock} className="flex flex-col flex-1 min-h-0">
             <DialogHeader className="p-6 pb-2 shrink-0">
               <DialogTitle className="font-headline text-xl md:text-2xl text-white">Add Stock</DialogTitle>
               <DialogDescription className="text-xs md:text-sm text-muted-foreground">
-                Restock {stockProduct?.name} by adding account entries — one per field.
+                Restock {stockProduct?.name} by adding account entries—one per line.
               </DialogDescription>
             </DialogHeader>
 
             <div className="flex-1 px-6 min-h-0 overflow-y-auto content-scrollbar">
               <div className="grid gap-4 py-4">
                 <div className="space-y-2">
-                  <Label className="text-xs md:text-sm text-white">Account Entries</Label>
-                  <div className="space-y-2">
-                    {stockAccounts.map((acc, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <Input value={acc} onChange={e => setStockAccounts(prev => prev.map((v,i) => i === idx ? e.target.value : v))} placeholder={`Account ${idx + 1}`} className="bg-secondary/50 border-none h-9 text-xs md:text-sm text-white rounded-lg flex-1" />
-                        <Button type="button" variant="outline" onClick={() => setStockAccounts(prev => prev.filter((_,i) => i !== idx))} className="h-9 text-xs text-white border-white/10 rounded-lg">Remove</Button>
-                      </div>
-                    ))}
-                    <Button type="button" onClick={() => setStockAccounts(prev => [...prev, ""])} className="h-9 text-xs bg-secondary/20 text-white rounded-lg">Add another</Button>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">Masukkan Account ID pada tiap field. Minimal satu field wajib diisi.</p>
+                  <Label className="text-xs md:text-sm text-white">Account Entries (One per line)</Label>
+                  <Textarea 
+                    value={stockInput} 
+                    onChange={e => setStockInput(e.target.value)} 
+                    placeholder="Example:&#10;account_id_1&#10;account_id_2&#10;account_id_3" 
+                    className="bg-secondary/50 border-none min-h-[200px] text-xs md:text-sm text-white rounded-lg focus-visible:ring-1 focus-visible:ring-primary" 
+                  />
+                  <p className="text-[10px] text-muted-foreground">Masukkan tiap ID akun di baris baru. Setiap baris akan dihitung sebagai 1 stok baru.</p>
                 </div>
               </div>
             </div>
 
             <DialogFooter className="p-6 pt-2 shrink-0 flex flex-row justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => { setIsStockOpen(false); setStockProduct(null); setStockAccounts([""]); }} className="h-9 text-xs text-white border-white/10 rounded-lg">Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => { setIsStockOpen(false); setStockProduct(null); setStockInput(""); }} className="h-9 text-xs text-white border-white/10 rounded-lg">Cancel</Button>
               <Button type="submit" className="bg-primary hover:bg-primary/90 h-9 text-xs text-white rounded-lg">Confirm Restock</Button>
             </DialogFooter>
           </form>
@@ -785,3 +844,4 @@ export default function InventoryPage() {
     </SidebarProvider>
   );
 }
+

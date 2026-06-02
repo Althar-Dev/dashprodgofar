@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { calculateTotalRevenue, calculateTotalPcs, calculateTotalTransactions } from '@/lib/database';
+import { calculateTotalRevenue, calculateTotalPcs, calculateTotalTransactions } from '@/lib/db';
 
 export async function GET(req: Request) {
   try {

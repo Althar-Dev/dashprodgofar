@@ -86,7 +86,7 @@ export default function DashboardPage() {
 
   const filteredProducts = recentProducts.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.sku.toLowerCase().includes(searchQuery.toLowerCase())
+    (p.sku ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (

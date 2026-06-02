@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllUsers, deleteUser, editUser } from '@/lib/database';
+import { getAllUsers, deleteUser, editUser } from '@/lib/db';
 
 export async function GET() {
   try {

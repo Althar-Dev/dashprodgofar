@@ -1,5 +1,16 @@
 import { NextResponse } from "next/server";
-import { connectDB, Product, Category } from "../../../lib/mongo";
+import { connectDB, Product, Category } from "@/lib/mongo";
+import {
+  placeholderMode,
+  getProductList,
+  getCategory,
+  addCategory,
+  addProduct,
+  deleteProduct as deletePlaceholderProduct,
+  addProductStock as addPlaceholderStock,
+  addProductToCategory,
+  updateProduct,
+} from "@/lib/db";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -8,6 +19,14 @@ export async function GET(req: Request) {
   const botId = botIdParam ? Number(botIdParam) : undefined;
   if (!botId) return NextResponse.json({ success: false, error: "botId query param required" }, { status: 400 });
   try {
+    if (placeholderMode) {
+      if (view === 'categories') {
+        const categories = await getCategory(botId);
+        return NextResponse.json(categories);
+      }
+      return NextResponse.json(await getProductList(botId));
+    }
+
     await connectDB();
     if (view === 'categories') {
       const categories = await Category.find({ botId }).lean();
@@ -43,6 +62,17 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { botId, product, category } = body;
     if (!botId) return NextResponse.json({ success: false, error: "botId required" }, { status: 400 });
+
+    if (placeholderMode) {
+      if (category && category.name) {
+        return NextResponse.json(await addCategory(botId, category.name, category.products || []));
+      }
+      if (!product || !product.id) {
+        return NextResponse.json({ success: false, error: "product with id required" }, { status: 400 });
+      }
+      return NextResponse.json(await addProduct(botId, product));
+    }
+
     await connectDB();
 
     // Create Category if payload contains `category`
@@ -73,6 +103,9 @@ export async function DELETE(req: Request) {
     const botId = Number(url.searchParams.get("botId"));
     const productId = url.searchParams.get("id");
     if (!botId || !productId) return NextResponse.json({ success: false, error: "botId and id required" }, { status: 400 });
+    if (placeholderMode) {
+      return NextResponse.json(await deletePlaceholderProduct(botId, productId));
+    }
     await connectDB();
     const res = await Product.deleteOne({ botId, id: productId });
     if (res.deletedCount === 0) return NextResponse.json({ success: false, error: "Produk tidak ditemukan." }, { status: 404 });
@@ -88,6 +121,27 @@ export async function PUT(req: Request) {
     const body = await req.json();
     const { botId, id, updates, categoryUpdate } = body;
     if (!botId) return NextResponse.json({ success: false, error: "botId required" }, { status: 400 });
+
+    if (placeholderMode) {
+      if (categoryUpdate && categoryUpdate.name && categoryUpdate.addProductId) {
+        const res = await addProductToCategory(botId, categoryUpdate.name, categoryUpdate.addProductId);
+        return NextResponse.json(res);
+      }
+
+      if (body.stockUpdate && body.stockUpdate.accounts) {
+        const accounts = Array.isArray(body.stockUpdate.accounts)
+          ? body.stockUpdate.accounts.filter(Boolean)
+          : [];
+        if (accounts.length === 0) {
+          return NextResponse.json({ success: false, error: "accounts array required" }, { status: 400 });
+        }
+        return NextResponse.json(await addPlaceholderStock(botId, id, accounts));
+      }
+
+      if (!id || !updates) return NextResponse.json({ success: false, error: "id and updates required" }, { status: 400 });
+      return NextResponse.json(await updateProduct(botId, id, updates));
+    }
+
     await connectDB();
 
     // Handle adding product id to a category
