@@ -734,7 +734,8 @@ export async function getAllTransactions(botId) {
   if (cache.has(key)) return cache.get(key);
   await connectDB();
   try {
-    const transactions = await Transaction.find({ botId }).sort({ createdAt: -1 }).limit(100).lean();
+    // Diperbarui: Menghapus .limit(100) untuk mengambil semua data dari MongoDB
+    const transactions = await Transaction.find({ botId }).sort({ createdAt: -1 }).lean();
     const res = { success: true, data: transactions };
     cache.set(key, res);
     return res;
@@ -979,3 +980,4 @@ export async function getProdukPopuler(botId, limit = 10) {
     return { success: false, error: err.message };
   }
 }
+

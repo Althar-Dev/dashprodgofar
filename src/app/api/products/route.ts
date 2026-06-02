@@ -7,7 +7,7 @@ import {
   addCategory,
   addProduct,
   deleteProduct as deletePlaceholderProduct,
-  deleteCategory as deletePlaceholderCategory,
+  deleteCategoryWithProducts as deletePlaceholderCategory,
   addProductStock as addPlaceholderStock,
   addProductToCategory,
   updateProduct,
@@ -102,29 +102,39 @@ export async function DELETE(req: Request) {
   try {
     const url = new URL(req.url);
     const botId = Number(url.searchParams.get("botId"));
-    const categoryName = url.searchParams.get("name");
     const productId = url.searchParams.get("id");
+    const categoryName = url.searchParams.get("category");
 
     if (!botId) return NextResponse.json({ success: false, error: "botId required" }, { status: 400 });
-
+    
+    // Delete Category and its products
     if (categoryName) {
       if (placeholderMode) {
         return NextResponse.json(await deletePlaceholderCategory(botId, categoryName));
       }
       await connectDB();
-      const res = await Category.deleteOne({ botId, name: categoryName });
-      if (res.deletedCount === 0) return NextResponse.json({ success: false, error: "Kategori tidak ditemukan." }, { status: 404 });
+      const cat = await Category.findOne({ botId, name: categoryName });
+      if (!cat) return NextResponse.json({ success: false, error: "Category not found." }, { status: 404 });
+      const productIds = cat.products || [];
+      await Product.deleteMany({ botId, id: { $in: productIds } });
+      await Category.deleteOne({ botId, name: categoryName });
       return NextResponse.json({ success: true });
     }
 
-    if (!productId) return NextResponse.json({ success: false, error: "id required" }, { status: 400 });
-    if (placeholderMode) {
-      return NextResponse.json(await deletePlaceholderProduct(botId, productId));
+    // Delete Single Product
+    if (productId) {
+      if (placeholderMode) {
+        return NextResponse.json(await deletePlaceholderProduct(botId, productId));
+      }
+      await connectDB();
+      const res = await Product.deleteOne({ botId, id: productId });
+      if (res.deletedCount === 0) return NextResponse.json({ success: false, error: "Produk tidak ditemukan." }, { status: 404 });
+      // Remove from category lists
+      await Category.updateMany({ botId }, { $pull: { products: productId } });
+      return NextResponse.json({ success: true });
     }
-    await connectDB();
-    const res = await Product.deleteOne({ botId, id: productId });
-    if (res.deletedCount === 0) return NextResponse.json({ success: false, error: "Produk tidak ditemukan." }, { status: 404 });
-    return NextResponse.json({ success: true });
+
+    return NextResponse.json({ success: false, error: "id or category required" }, { status: 400 });
   } catch (e: any) {
     console.error(e);
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });

@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState, Suspense, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
@@ -25,7 +25,9 @@ import {
   Hash,
   BadgeCheck,
   CreditCard,
-  ClipboardCheck
+  ClipboardCheck,
+  AlertTriangle,
+  Layers
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -51,6 +53,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from '@/components/ui/label';
 import { 
   Select, 
@@ -122,12 +134,13 @@ function InventoryContent() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const isCategoryMode = selectedCategory === null;
-  const dialogActionLabel = isCategoryMode ? 'New Category' : 'New Product';
-  const dialogTitle = isCategoryMode ? 'Create New Category' : 'Register New Product';
-  const dialogDescription = isCategoryMode ? 'Define a new product category for catalog grouping.' : 'Assign SKU and initial stock levels for local persistence.';
-  const [search, setSearch] = useState("");
+  const [addMode, setAddMode] = useState<'category' | 'product'>('category');
   const [isAddOpen, setIsAddOpen] = useState(false);
+  
+  const dialogTitle = addMode === 'category' ? 'Create New Category' : 'Register New Product';
+  const dialogDescription = addMode === 'category' ? 'Define a new product category for catalog grouping.' : 'Assign SKU and initial stock levels for local persistence.';
+  
+  const [search, setSearch] = useState("");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [stockProduct, setStockProduct] = useState<Product | null>(null);
   const [isStockOpen, setIsStockOpen] = useState(false);
@@ -145,29 +158,74 @@ function InventoryContent() {
   });
   const [selectedProductView, setSelectedProductView] = useState<any | null>(null);
 
-  const loadData = () => {
+  // Deletion States
+  const [confirmDelete, setConfirmDelete] = useState<{ 
+    isOpen: boolean, 
+    type: 'product' | 'category' | null, 
+    id: string, 
+    name: string 
+  }>({
+    isOpen: false,
+    type: null,
+    id: '',
+    name: ''
+  });
+
+  /**
+   * SAFETY GUARD: Masalah UI "beku" biasanya karena pointer-events: none 
+   * tertinggal di body setelah dialog ditutup. Hook ini memastikan body selalu 
+   * interaktif saat tidak ada dialog aktif.
+   */
+  useEffect(() => {
+    const isAnyDialogOpen = isAddOpen || !!editingProduct || isStockOpen || !!selectedProductView || confirmDelete.isOpen;
+    
+    if (!isAnyDialogOpen) {
+      // Tunggu sebentar agar Radix UI selesai melakukan transisi penutupan internalnya
+      const timer = setTimeout(() => {
+        document.body.style.pointerEvents = 'auto';
+        document.body.style.overflow = 'auto';
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isAddOpen, editingProduct, isStockOpen, selectedProductView, confirmDelete.isOpen]);
+
+  const resetForm = useCallback(() => {
+    setFormData({
+      sku: '',
+      name: '',
+      description: '',
+      price: 0,
+      stock: 0,
+      minStock: 0,
+      snk: '',
+      category: selectedCategory || 'General',
+      supplierId: ''
+    });
+  }, [selectedCategory]);
+
+  const loadData = useCallback(() => {
     const BOT_ID = 220208;
     (async () => {
       try {
         const res = await fetch(`/api/products?botId=${BOT_ID}`);
         const json = await res.json();
-            if (json.success) {
-              const prods = json.data.map((p: any) => ({
-                id: p.id,
-                sku: p.id,
-                name: p.name,
-                description: p.desc || "",
-                price: p.price,
-                snk: p.snk || "",
-                stock: p.stock || 0,
-                minStock: 0,
-                category: "General",
-                supplierId: "",
-                createdAt: p.createdAt || new Date().toISOString(),
-                supplier: null,
-                account: p.account || [],
-                terjual: p.terjual || 0
-              }));
+        if (json.success) {
+          const prods = json.data.map((p: any) => ({
+            id: p.id,
+            sku: p.id,
+            name: p.name,
+            description: p.desc || "",
+            price: p.price,
+            snk: p.snk || "",
+            stock: p.stock || 0,
+            minStock: 0,
+            category: "General",
+            supplierId: "",
+            createdAt: p.createdAt || new Date().toISOString(),
+            supplier: null,
+            account: p.account || [],
+            terjual: p.terjual || 0
+          }));
           setProducts(prods);
         } else {
           setProducts([]);
@@ -189,35 +247,36 @@ function InventoryContent() {
       }
     })();
     setSuppliers(db.getSuppliers());
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
     setSelectedCategory(searchParams.get('category'));
     if (searchParams.get('add') === 'true') {
+      setAddMode('product');
       setIsAddOpen(true);
     }
-  }, [searchParams]);
+  }, [searchParams, loadData]);
 
   useEffect(() => {
-    if (isAddOpen && selectedCategory) {
-      setFormData(prev => ({ ...prev, category: selectedCategory }));
+    if (isAddOpen) {
+      setFormData(prev => ({ ...prev, category: selectedCategory || 'General' }));
     }
   }, [isAddOpen, selectedCategory]);
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isCategoryMode) {
+    const BOT_ID = 220208;
+
+    if (addMode === 'category') {
       (async () => {
         try {
-          const BOT_ID = 220208;
           const productIds = (formData.description || "").split(',').map(s => s.trim()).filter(Boolean);
           const payload = { botId: BOT_ID, category: { name: formData.name, products: productIds } };
           const res = await fetch('/api/products', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
           const json = await res.json();
           if (json.success) {
             setIsAddOpen(false);
-            resetForm();
             loadData();
             toast({ title: "Success", description: `Category '${formData.name}' created.` });
           } else {
@@ -233,7 +292,6 @@ function InventoryContent() {
 
     (async () => {
       try {
-        const BOT_ID = 220208;
         const payload = {
           botId: BOT_ID,
           product: {
@@ -248,13 +306,14 @@ function InventoryContent() {
         const json = await res.json();
         if (json.success) {
           const createdId = json.data?.id || payload.product.id;
-          try {
-            await fetch('/api/products', { method: 'PUT', body: JSON.stringify({ botId: BOT_ID, categoryUpdate: { name: selectedCategory, addProductId: createdId } }), headers: { 'Content-Type': 'application/json' } });
-          } catch (e) {
-            console.error('Failed to attach product to category', e);
+          if (selectedCategory && selectedCategory !== 'General') {
+            try {
+              await fetch('/api/products', { method: 'PUT', body: JSON.stringify({ botId: BOT_ID, categoryUpdate: { name: selectedCategory, addProductId: createdId } }), headers: { 'Content-Type': 'application/json' } });
+            } catch (e) {
+              console.error('Failed to attach product to category', e);
+            }
           }
           setIsAddOpen(false);
-          resetForm();
           loadData();
           toast({ title: "Success", description: "Product added to system" });
         } else {
@@ -272,13 +331,12 @@ function InventoryContent() {
     if (editingProduct) {
       (async () => {
         try {
-        const BOT_ID = 220208;
+          const BOT_ID = 220208;
           const payload = { botId: BOT_ID, id: editingProduct.id, updates: { name: formData.name, price: formData.price, desc: formData.description, snk: formData.snk || "" } };
           const res = await fetch('/api/products', { method: 'PUT', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
           const json = await res.json();
           if (json.success) {
             setEditingProduct(null);
-            resetForm();
             loadData();
             toast({ title: "Updated", description: "Product record synchronized" });
           } else {
@@ -334,64 +392,79 @@ function InventoryContent() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm("Delete this product from inventory?")) {
+  const triggerDeleteProduct = (id: string, name: string) => {
+    setConfirmDelete({
+      isOpen: true,
+      type: 'product',
+      id,
+      name
+    });
+  };
+
+  const triggerDeleteCategory = (name: string) => {
+    setConfirmDelete({
+      isOpen: true,
+      type: 'category',
+      id: name,
+      name
+    });
+  };
+
+  const executeDeletion = () => {
+    const { type, id, name } = confirmDelete;
+    const BOT_ID = 220208;
+
+    if (type === 'product') {
       (async () => {
         try {
-          const BOT_ID = 220208;
           const res = await fetch(`/api/products?botId=${BOT_ID}&id=${encodeURIComponent(id)}`, { method: 'DELETE' });
           const json = await res.json();
           if (json.success) {
             loadData();
-            toast({ title: "Deleted", description: "Item removed from system", variant: "destructive" });
+            toast({ title: "Deleted", description: `Product '${name}' removed.`, variant: "destructive" });
           } else {
-            toast({ title: 'Error', description: json.error || 'Failed to delete', variant: 'destructive' });
+            toast({ title: 'Error', description: json.error || 'Failed to delete product', variant: 'destructive' });
           }
         } catch (e) {
           console.error(e);
           toast({ title: 'Error', description: 'Request failed', variant: 'destructive' });
+        } finally {
+          setConfirmDelete({ isOpen: false, type: null, id: '', name: '' });
         }
       })();
-    }
-  };
-
-  const handleDeleteCategory = (name: string) => {
-    if (confirm(`Delete category '${name}'?`)) {
+    } else if (type === 'category') {
       (async () => {
         try {
-          const BOT_ID = 220208;
-          const res = await fetch(`/api/products?botId=${BOT_ID}&name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+          const res = await fetch(`/api/products?botId=${BOT_ID}&category=${encodeURIComponent(name)}`, { method: 'DELETE' });
           const json = await res.json();
           if (json.success) {
             loadData();
-            toast({ title: 'Deleted', description: `Category '${name}' removed`, variant: 'destructive' });
+            toast({ title: "Deleted", description: `Category '${name}' and its products deleted.`, variant: "destructive" });
+            if (selectedCategory === name) {
+              setSelectedCategory(null);
+              router.replace('/inventory');
+            }
           } else {
             toast({ title: 'Error', description: json.error || 'Failed to delete category', variant: 'destructive' });
           }
         } catch (e) {
           console.error(e);
           toast({ title: 'Error', description: 'Request failed', variant: 'destructive' });
+        } finally {
+          setConfirmDelete({ isOpen: false, type: null, id: '', name: '' });
         }
       })();
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      sku: '',
-      name: '',
-      description: '',
-      price: 0,
-      stock: 0,
-      minStock: 0,
-      snk: '',
-      category: selectedCategory || 'General',
-      supplierId: ''
-    });
-  };
-
-  const filteredProducts = (selectedCategory ? products.filter(p => p.category === selectedCategory || p.id && categories.find((c:any)=>c.name===selectedCategory && c.products.includes(p.id))) : products)
-    .filter(p => 
+  const filteredProducts = (selectedCategory 
+    ? (selectedCategory === 'General'
+        ? products.filter(p => !categories.some((c: any) => c.products?.includes(p.id)))
+        : products.filter(p => categories.find((c: any) => c.name === selectedCategory)?.products?.includes(p.id))
+      )
+    : products
+  )
+  .filter(p => 
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.sku.toLowerCase().includes(search.toLowerCase()) ||
     p.category.toLowerCase().includes(search.toLowerCase())
@@ -430,14 +503,33 @@ function InventoryContent() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <Dialog open={isAddOpen} onOpenChange={(val) => { setIsAddOpen(val); if(!val) resetForm(); }}>
-            {!isMobile && (
-              <DialogTrigger asChild>
-                <Button className="gap-2 bg-primary hover:bg-primary/90 h-9 md:h-10 text-xs md:text-sm text-white rounded-xl">
-                  <Plus className="w-4 h-4" /> {dialogActionLabel}
-                </Button>
-              </DialogTrigger>
-            )}
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="gap-2 bg-primary hover:bg-primary/90 h-9 md:h-10 text-xs md:text-sm text-white rounded-xl">
+                <Plus className="w-4 h-4" /> New
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-card border-white/10 text-white rounded-xl w-48 p-2">
+              <DropdownMenuItem 
+                onClick={() => { setAddMode('category'); setIsAddOpen(true); }}
+                className="rounded-lg cursor-pointer hover:bg-primary/20 hover:text-primary py-2.5"
+              >
+                <Layers className="w-4 h-4 mr-3" /> New Category
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => { setAddMode('product'); setIsAddOpen(true); }}
+                className="rounded-lg cursor-pointer hover:bg-primary/20 hover:text-primary py-2.5"
+              >
+                <Package className="w-4 h-4 mr-3" /> New Product
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Dialog open={isAddOpen} onOpenChange={(val) => { 
+            setIsAddOpen(val); 
+            if (!val) setTimeout(resetForm, 300); 
+          }}>
             <DialogContent className="rounded-2xl w-[95vw] sm:max-w-[550px] max-h-[85dvh] md:max-h-[90dvh] flex flex-col bg-card border-none shadow-2xl p-0 overflow-hidden">
               <form onSubmit={handleAdd} className="flex flex-col flex-1 min-h-0 overflow-hidden">
                 
@@ -450,7 +542,7 @@ function InventoryContent() {
 
                 <div className="flex-1 px-6 min-h-0 overflow-y-auto content-scrollbar">
                   <div className="grid gap-4 py-4">
-                    {!selectedCategory ? (
+                    {addMode === 'category' ? (
                       <div className="space-y-2">
                         <Label htmlFor="cat-name" className="text-xs md:text-sm text-white">Category Name</Label>
                         <Input id="cat-name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Electronics" required className="bg-secondary/50 border-none h-9 text-xs md:text-sm text-white rounded-lg" />
@@ -499,14 +591,14 @@ function InventoryContent() {
                     type="submit" 
                     className="flex-1 sm:flex-none bg-primary hover:bg-primary/90 h-9 text-xs text-white rounded-lg"
                   >
-                    {isCategoryMode ? 'Create Category' : 'Initialize Product'}
+                    {addMode === 'category' ? 'Create Category' : 'Initialize Product'}
                   </Button>
                 </DialogFooter>
                 
               </form>
             </DialogContent>
-
           </Dialog>
+
           <Button size="icon" variant="ghost" className="h-9 w-9">
             <Download className="w-5 h-5 text-muted-foreground" />
           </Button>
@@ -533,34 +625,61 @@ function InventoryContent() {
 
         <div className={gridClasses}>
           {!selectedCategory ? (
-            categories.map((c) => (
-              <Card key={c.name} className="bg-card/40 border-white/5 hover:bg-card/60 transition-all duration-300 group overflow-hidden shadow-xl rounded-2xl cursor-pointer" onClick={() => {
-                setSelectedCategory(c.name);
-                router.replace(`/inventory?category=${encodeURIComponent(c.name)}`);
+            <>
+              {categories.map((c) => (
+                <Card key={c.name} className="bg-card/40 border-white/5 hover:bg-card/60 transition-all duration-300 group overflow-hidden shadow-xl rounded-2xl cursor-pointer" onClick={() => {
+                  setSelectedCategory(c.name);
+                  router.replace(`/inventory?category=${encodeURIComponent(c.name)}`);
+                }}>
+                  <CardHeader className="p-3 md:p-6 pb-2">
+                    <div className="flex justify-between items-start">
+                      <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 font-mono text-[9px] md:text-[10px] tracking-tighter px-1 rounded-sm">
+                        {c.count}
+                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-7 w-7 md:h-8 md:w-8 hover:bg-destructive/20 hover:text-destructive rounded-full"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            triggerDeleteCategory(c.name);
+                          }}
+                        >
+                          <Trash className="h-3 w-3 md:h-4 md:w-4 text-destructive" />
+                        </Button>
+                        <div className="text-right text-xs text-muted-foreground hidden md:block">Category</div>
+                      </div>
+                    </div>
+                    <CardTitle className="text-xs md:text-lg font-headline mt-2 line-clamp-1 text-white">{c.name}</CardTitle>
+                    <CardDescription className="text-[10px] md:text-xs line-clamp-2 text-muted-foreground">{c.products && c.products.length} products</CardDescription>
+                  </CardHeader>
+                </Card>
+              ))}
+              
+              <Card className="bg-white/5 border border-white/10 border-dashed hover:bg-white/[0.08] transition-all duration-300 group overflow-hidden shadow-xl rounded-2xl cursor-pointer relative" onClick={() => {
+                setSelectedCategory('General');
+                router.replace(`/inventory?category=General`);
               }}>
                 <CardHeader className="p-3 md:p-6 pb-2">
-                  <div className="flex justify-between items-start gap-2">
-                    <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 font-mono text-[9px] md:text-[10px] tracking-tighter px-1 rounded-sm">
-                      {c.count}
+                  <div className="flex justify-between items-start">
+                    <Badge variant="outline" className="text-accent border-accent/20 bg-accent/5 font-mono text-[9px] md:text-[10px] tracking-tighter px-1 rounded-sm">
+                      AUTO
                     </Badge>
-                    <div className="text-right text-xs text-muted-foreground">Category</div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="ml-auto h-7 w-7 md:h-8 md:w-8 text-destructive hover:bg-destructive/10 rounded-full"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteCategory(c.name);
-                      }}
-                    >
-                      <Trash className="w-3 h-3 md:w-4 md:h-4" />
-                    </Button>
+                    <Package className="h-4 w-4 text-accent/50 group-hover:text-accent transition-colors" />
                   </div>
-                  <CardTitle className="text-xs md:text-lg font-headline mt-2 line-clamp-1 text-white">{c.name}</CardTitle>
-                  <CardDescription className="text-[10px] md:text-xs line-clamp-2 text-muted-foreground">{c.products && c.products.length} products</CardDescription>
+                  <CardTitle className="text-xs md:text-lg font-headline mt-2 line-clamp-1 text-white flex items-center gap-2">
+                    General Assets
+                  </CardTitle>
+                  <CardDescription className="text-[10px] md:text-xs line-clamp-2 text-muted-foreground italic">
+                    Uncategorized or miscellaneous digital entries
+                  </CardDescription>
                 </CardHeader>
+                <div className="absolute bottom-3 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <ChevronRight className="w-4 h-4 text-accent" />
+                </div>
               </Card>
-            ))
+            </>
           ) : (
             filteredProducts.map((p) => (
               <Card key={p.id} onClick={(e) => { const el = e.target as HTMLElement; if (el.closest('button')) return; setSelectedProductView(p); }} className="bg-card/40 border-white/5 hover:bg-card/60 transition-all duration-300 group overflow-hidden shadow-xl rounded-2xl cursor-pointer">
@@ -575,7 +694,7 @@ function InventoryContent() {
                     className="h-7 w-7 md:h-8 md:w-8 -mt-1 -mr-2 hover:bg-destructive/20 hover:text-destructive rounded-full"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDelete(p.id);
+                      triggerDeleteProduct(p.id, p.name);
                     }}
                   >
                     <Trash className="h-3 w-3 md:h-4 md:w-4 text-destructive" />
@@ -653,6 +772,7 @@ function InventoryContent() {
         </div>
       </main>
 
+      {/* Product Detail Viewer */}
       <Dialog open={!!selectedProductView} onOpenChange={(val) => { if(!val) setSelectedProductView(null); }}>
         <DialogContent className="rounded-[1.5rem] md:rounded-[2.5rem] w-[95vw] sm:max-w-[650px] max-h-[92dvh] md:max-h-[90dvh] flex flex-col bg-background/40 backdrop-blur-2xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] p-0 overflow-hidden animate-in fade-in zoom-in duration-300">
           
@@ -763,23 +883,44 @@ function InventoryContent() {
           </div>
 
           <DialogFooter className="p-4 md:p-6 shrink-0 bg-white/[0.02] border-t border-white/10 flex flex-row items-center justify-end gap-2 md:gap-3">
-              <Button type="button" variant="outline" onClick={() => { setStockProduct(selectedProductView); setStockInput(""); setIsStockOpen(true); setSelectedProductView(null); }} className="flex-1 sm:flex-none h-10 md:h-11 px-4 md:px-8 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest text-white border-white/10 hover:bg-white/5 transition-all">Add Stock</Button>
-              <Button type="button" onClick={() => { setEditingProduct(selectedProductView); setSelectedProductView(null); setFormData({
-                  sku: selectedProductView.sku,
-                  name: selectedProductView.name,
-                  description: selectedProductView.description,
-                  price: selectedProductView.price,
-                  snk: selectedProductView.snk || "",
-                  stock: selectedProductView.stock,
-                  minStock: selectedProductView.minStock,
-                  category: selectedProductView.category,
-                  supplierId: selectedProductView.supplierId
-                }); }} className="flex-1 sm:flex-none h-10 md:h-11 px-4 md:px-8 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all">Modify Record</Button>
+              <Button type="button" variant="outline" onClick={() => { 
+                const current = selectedProductView;
+                setSelectedProductView(null);
+                setTimeout(() => {
+                  setStockProduct(current);
+                  setStockInput("");
+                  setIsStockOpen(true);
+                }, 300);
+              }} className="flex-1 sm:flex-none h-10 md:h-11 px-4 md:px-8 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest text-white border-white/10 hover:bg-white/5 transition-all">Add Stock</Button>
+              <Button type="button" onClick={() => { 
+                const current = selectedProductView;
+                setSelectedProductView(null);
+                setTimeout(() => {
+                  setEditingProduct(current);
+                  setFormData({
+                    sku: current.sku,
+                    name: current.name,
+                    description: current.description,
+                    price: current.price,
+                    snk: current.snk || "",
+                    stock: current.stock,
+                    minStock: current.minStock,
+                    category: current.category,
+                    supplierId: current.supplierId
+                  });
+                }, 300);
+              }} className="flex-1 sm:flex-none h-10 md:h-11 px-4 md:px-8 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all">Modify Record</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editingProduct} onOpenChange={(val) => { if(!val) { setEditingProduct(null); resetForm(); } }}>
+      {/* Edit Product Dialog */}
+      <Dialog open={!!editingProduct} onOpenChange={(val) => { 
+        if (!val) {
+          setEditingProduct(null);
+          setTimeout(resetForm, 300);
+        }
+      }}>
         <DialogContent className="rounded-2xl w-[95vw] sm:max-w-[550px] max-h-[90dvh] flex flex-col bg-card border-none shadow-2xl p-0 overflow-hidden">
         <form onSubmit={handleUpdate} className="flex flex-col flex-1 min-h-0">
           
@@ -828,7 +969,14 @@ function InventoryContent() {
       </DialogContent>
       </Dialog>
 
-      <Dialog open={isStockOpen} onOpenChange={(val) => { if(!val) { setStockProduct(null); setStockInput(""); } setIsStockOpen(val); }}>
+      {/* Add Stock Dialog */}
+      <Dialog open={isStockOpen} onOpenChange={(val) => { 
+        if(!val) {
+          setStockProduct(null);
+          setStockInput("");
+        }
+        setIsStockOpen(val); 
+      }}>
         <DialogContent className="rounded-2xl w-[95vw] sm:max-w-[550px] max-h-[90dvh] flex flex-col bg-card border-none shadow-2xl p-0 overflow-hidden">
           <form onSubmit={handleAddStock} className="flex flex-col flex-1 min-h-0">
             <DialogHeader className="p-6 pb-2 shrink-0">
@@ -860,6 +1008,39 @@ function InventoryContent() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={confirmDelete.isOpen} onOpenChange={(open) => {
+        if (!open) setConfirmDelete(prev => ({ ...prev, isOpen: false }));
+      }}>
+        <AlertDialogContent className="rounded-3xl border-none bg-card shadow-2xl w-[90vw] max-w-[400px]">
+          <AlertDialogHeader className="space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto sm:mx-0">
+              <AlertTriangle className="w-6 h-6 text-destructive" />
+            </div>
+            <AlertDialogTitle className="font-headline text-xl text-white text-center sm:text-left">
+              Confirm Deletion
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground text-xs md:text-sm text-center sm:text-left leading-relaxed">
+              {confirmDelete.type === 'category' 
+                ? `Are you sure you want to delete the category '${confirmDelete.name}' and ALL products within it? This action is permanent and cannot be reversed.`
+                : `Are you sure you want to delete '${confirmDelete.name}' from your inventory? This will permanently remove the asset from your database.`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-6 flex-col sm:flex-row gap-2">
+            <AlertDialogCancel className="rounded-xl h-10 border-white/10 text-white hover:bg-white/5 order-2 sm:order-1">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={executeDeletion} 
+              className="rounded-xl h-10 bg-destructive hover:bg-destructive/90 text-white shadow-lg shadow-destructive/20 order-1 sm:order-2"
+            >
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -876,4 +1057,3 @@ export default function InventoryPage() {
     </SidebarProvider>
   );
 }
-

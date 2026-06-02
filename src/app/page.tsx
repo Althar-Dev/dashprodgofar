@@ -5,7 +5,6 @@ import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/layout/AppSidebar';
-import { db, Product } from '@/lib/db';
 import { 
   TrendingUp, 
   Search,
@@ -15,7 +14,8 @@ import {
   ShoppingBag,
   Activity,
   Package,
-  Clock
+  Clock,
+  ChevronRight
 } from 'lucide-react';
 import { cn, formatNumber } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -30,8 +30,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Progress } from '@/components/ui/progress';
+import { useRouter } from 'next/navigation';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [stats, setStats] = useState({
     totalProducts: 0,
     totalValue: 0,
@@ -39,54 +41,55 @@ export default function DashboardPage() {
     topCategories: 0,
     totalTransactions: 0
   });
-  const [recentProducts, setRecentProducts] = useState<Product[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const BOT_ID = Number(process.env.NEXT_PUBLIC_BOT_ID) || 1000447248;
+    const BOT_ID = 220208;
     (async () => {
       try {
-        const [productsRes, summaryRes] = await Promise.all([
+        const [productsRes, summaryRes, transactionsRes] = await Promise.all([
           fetch(`/api/products?botId=${BOT_ID}`),
-          fetch(`/api/transactions/summary?botId=${BOT_ID}`)
+          fetch(`/api/transactions/summary?botId=${BOT_ID}`),
+          fetch(`/api/transactions?botId=${BOT_ID}`)
         ]);
+        
         const productsJson = await productsRes.json();
         const summaryJson = await summaryRes.json();
+        const transactionsJson = await transactionsRes.json();
         
         if (productsJson.success) {
-          const prods = productsJson.data.map((p: any) => ({
-            id: p.id,
-            sku: p.id,
-            name: p.name,
-            description: p.desc || "",
-            price: p.price,
-            stock: p.stock || 0,
-            minStock: 0,
-            category: "General",
-            supplierId: "",
-            createdAt: p.createdAt || new Date().toISOString(),
-            supplier: null
-          }));
-          setRecentProducts(prods.slice(0,5));
-          setStats({
+          const prods = productsJson.data;
+          setStats(prev => ({
+            ...prev,
             totalProducts: prods.length,
-            totalValue: prods.reduce((acc:any, x:any) => acc + (x.price * x.stock), 0),
-            lowStockCount: prods.filter((x:any) => x.stock <= (x.minStock || 0)).length,
-            topCategories: Array.from(new Set(prods.map((x:any) => x.category))).length,
-            totalTransactions: summaryJson.success ? (summaryJson.data?.totalTransactions || 0) : 0
-          });
-        } else {
-          setRecentProducts([]);
+            totalValue: prods.reduce((acc: any, x: any) => acc + (x.price * (x.stock || 0)), 0),
+          }));
+        }
+
+        if (summaryJson.success) {
+          setStats(prev => ({
+            ...prev,
+            totalTransactions: summaryJson.data?.totalTransactions || 0,
+            totalRevenue: summaryJson.data?.totalRevenue || 0
+          }));
+        }
+
+        if (transactionsJson.success) {
+          setRecentTransactions(transactionsJson.data.slice(0, 5));
         }
       } catch (e) {
-        console.error(e);
+        console.error("Dashboard Load Error:", e);
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
 
-  const filteredProducts = recentProducts.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    (p.sku ?? "").toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredTransactions = recentTransactions.filter(t => 
+    String(t.productName || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
+    String(t._id || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -110,7 +113,7 @@ export default function DashboardPage() {
             <div className="relative hidden md:flex items-center">
               <Search className="absolute left-3 w-4 h-4 text-muted-foreground" />
               <Input 
-                placeholder="Lookup SKU or Product..." 
+                placeholder="Lookup Transaction ID..." 
                 className="pl-9 w-64 h-9 bg-secondary/50 border-none focus-visible:ring-1 focus-visible:ring-primary text-white"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -129,13 +132,13 @@ export default function DashboardPage() {
               <CardContent className="pt-6 relative z-10">
                 <div className="flex flex-col space-y-1">
                   <span className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-[0.2em] flex items-center gap-2">
-                    <Wallet className="w-3 h-3 text-primary" /> Income
+                    <Wallet className="w-3 h-3 text-primary" /> Total Revenue
                   </span>
                   <div className="text-3xl md:text-4xl font-headline font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent tracking-tight">
-                    Rp {formatNumber(stats.totalValue)}
+                    Rp {formatNumber(stats.totalRevenue || stats.totalValue)}
                   </div>
                   <div className="flex items-center gap-2 text-xs md:text-sm text-emerald-500 font-medium">
-                    <span className="bg-emerald-500/10 px-2 py-0.5 rounded">Sales Overview</span>
+                    <span className="bg-emerald-500/10 px-2 py-0.5 rounded">Operational Overview</span>
                     <TrendingUp className="w-4 h-4" />
                   </div>
                 </div>
@@ -158,7 +161,7 @@ export default function DashboardPage() {
                   <div className="flex flex-col items-center justify-center border-r border-white/5 py-6 px-1">
                     <Package className="w-4 h-4 text-primary/50 mb-2 group-hover:text-primary transition-colors" />
                     <span className="text-2xl md:text-3xl font-headline font-bold text-primary">{formatNumber(stats.totalProducts)}</span>
-                    <span className="text-[8px] md:text-[10px] uppercase font-bold text-muted-foreground tracking-widest mt-1 text-center">Product</span>
+                    <span className="text-[8px] md:text-[10px] uppercase font-bold text-muted-foreground tracking-widest mt-1 text-center">Catalog</span>
                   </div>
                   <div className="flex flex-col items-center justify-center py-6 px-1">
                     <Clock className="w-4 h-4 text-accent/50 mb-2 group-hover:text-accent transition-colors" />
@@ -175,43 +178,63 @@ export default function DashboardPage() {
               <CardHeader className="flex flex-row items-center justify-between border-b border-white/5 pb-4">
                 <div>
                   <CardTitle className="font-headline text-base md:text-lg text-white">New Transactions</CardTitle>
-                  <CardDescription className="text-xs md:text-sm text-muted-foreground">Recent operational flow</CardDescription>
+                  <CardDescription className="text-xs md:text-sm text-muted-foreground">Latest verified operational flow</CardDescription>
                 </div>
                 <Button variant="ghost" size="sm" className="text-primary hover:text-primary/80 text-xs" asChild>
-                  <a href="/inventory">View All <ArrowUpRight className="ml-2 w-4 h-4" /></a>
+                  <a href="/transactions">View History <ArrowUpRight className="ml-2 w-4 h-4" /></a>
                 </Button>
               </CardHeader>
               <CardContent className="pt-6 px-0">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent border-white/5 px-4">
-                      <TableHead className="w-[80px] pl-6 text-xs text-muted-foreground">ID</TableHead>
-                      <TableHead className="text-xs text-muted-foreground">Transaction Detail</TableHead>
-                      <TableHead className="text-right pr-6 text-xs text-muted-foreground">Status</TableHead>
+                      <TableHead className="w-[120px] pl-6 text-xs text-muted-foreground uppercase font-bold tracking-widest">TRX ID</TableHead>
+                      <TableHead className="text-xs text-muted-foreground uppercase font-bold tracking-widest">Item Description</TableHead>
+                      <TableHead className="text-right pr-6 text-xs text-muted-foreground uppercase font-bold tracking-widest">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredProducts.map((p) => (
-                      <TableRow key={p.id} className="border-white/5 group hover:bg-white/[0.02]">
-                        <TableCell className="font-mono text-[9px] md:text-[10px] text-primary pl-6">{p.sku}</TableCell>
-                        <TableCell className="font-medium text-xs md:text-sm text-white">
-                          <div className="flex flex-col">
-                            <span>{p.name}</span>
-                            <span className="text-[9px] md:text-[10px] text-muted-foreground">{p.category}</span>
-                          </div>
+                    {loading ? (
+                       <TableRow>
+                        <TableCell colSpan={3} className="h-32 text-center text-muted-foreground animate-pulse uppercase tracking-[0.2em] text-xs">
+                          Decrypting Secure Logs...
                         </TableCell>
-                        <TableCell className="text-right pr-6">
-                          <div className="flex flex-col items-end gap-1">
-                            <span className={cn(
-                              "text-[10px] md:text-xs font-semibold text-emerald-500"
-                            )}>
-                              Completed
-                            </span>
-                            <Progress value={100} className="w-10 md:w-12 h-1 bg-white/5 [&>div]:bg-emerald-500" />
-                          </div>
+                       </TableRow>
+                    ) : filteredTransactions.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="h-32 text-center text-muted-foreground">
+                          No transactions found in current cluster.
                         </TableCell>
-                      </TableRow>
-                    ))}
+                       </TableRow>
+                    ) : (
+                      filteredTransactions.map((t) => (
+                        <TableRow 
+                          key={t._id} 
+                          className="border-white/5 group hover:bg-white/[0.02] cursor-pointer"
+                          onClick={() => router.push(`/transactions/detail/${t._id}`)}
+                        >
+                          <TableCell className="font-mono text-[9px] md:text-[10px] text-primary pl-6">
+                            {String(t._id).substring(0, 8).toUpperCase()}
+                          </TableCell>
+                          <TableCell className="font-medium text-xs md:text-sm text-white">
+                            <div className="flex flex-col">
+                              <span>{t.productName}</span>
+                              <span className="text-[9px] md:text-[10px] text-muted-foreground">
+                                {new Date(t.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} · Rp {Number(t.totalAmount || t.price * t.quantity).toLocaleString('id-ID')}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right pr-6">
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="text-[10px] md:text-xs font-semibold text-emerald-500 flex items-center gap-1">
+                                {t.status?.toUpperCase() || 'COMPLETED'} <ChevronRight className="w-3 h-3 text-muted-foreground group-hover:text-white transition-colors" />
+                              </span>
+                              <Progress value={100} className="w-10 md:w-16 h-1 bg-white/5 [&>div]:bg-emerald-500" />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>

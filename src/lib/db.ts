@@ -491,7 +491,24 @@ const placeholderDb = {
 
   deleteCategory: async (botId: number, categoryName: string) => {
     const index = placeholderCategories.findIndex((item) => item.botId === botId && item.name === categoryName);
-    if (index === -1) return { success: false, error: "Category not found." };
+    if (index === -1) return { success: false, error: "Kategori tidak ditemukan." };
+    placeholderCategories.splice(index, 1);
+    return { success: true };
+  },
+
+  deleteCategoryWithProducts: async (botId: number, categoryName: string) => {
+    const index = placeholderCategories.findIndex((item) => item.botId === botId && item.name === categoryName);
+    if (index === -1) return { success: false, error: "Kategori tidak ditemukan." };
+    
+    const productIds = placeholderCategories[index].products || [];
+    
+    // Delete all products in category from system
+    for (const pid of productIds) {
+      const pIdx = placeholderProducts.findIndex(p => p.botId === botId && p.id === pid);
+      if (pIdx !== -1) placeholderProducts.splice(pIdx, 1);
+    }
+    
+    // Delete category
     placeholderCategories.splice(index, 1);
     return { success: true };
   },
@@ -576,6 +593,7 @@ export const getCategory = async (botId: string | number) => runDb("getCategory"
 export const addCategory = async (botId: string | number, categoryName: string, productIds: string[] = []) => runDb("addCategory", botId, categoryName, productIds);
 export const updateCategory = async (botId: string | number, categoryName: string, productIds: string[]) => runDb("updateCategory", botId, categoryName, productIds);
 export const deleteCategory = async (botId: string | number, categoryName: string) => runDb("deleteCategory", botId, categoryName);
+export const deleteCategoryWithProducts = async (botId: string | number, categoryName: string) => runDb("deleteCategoryWithProducts", botId, categoryName);
 export const addProductToCategory = async (botId: string | number, categoryName: string, productId: string) => runDb("addProductToCategory", botId, categoryName, productId);
 export const updateProduct = async (botId: string | number, productId: string, updates: Record<string, any>) => runDb("updateProduct", botId, productId, updates);
 export const db = { getSuppliers, placeholderMode };
