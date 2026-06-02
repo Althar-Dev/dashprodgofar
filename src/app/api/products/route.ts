@@ -7,6 +7,7 @@ import {
   addCategory,
   addProduct,
   deleteProduct as deletePlaceholderProduct,
+  deleteCategory as deletePlaceholderCategory,
   addProductStock as addPlaceholderStock,
   addProductToCategory,
   updateProduct,
@@ -101,8 +102,22 @@ export async function DELETE(req: Request) {
   try {
     const url = new URL(req.url);
     const botId = Number(url.searchParams.get("botId"));
+    const categoryName = url.searchParams.get("name");
     const productId = url.searchParams.get("id");
-    if (!botId || !productId) return NextResponse.json({ success: false, error: "botId and id required" }, { status: 400 });
+
+    if (!botId) return NextResponse.json({ success: false, error: "botId required" }, { status: 400 });
+
+    if (categoryName) {
+      if (placeholderMode) {
+        return NextResponse.json(await deletePlaceholderCategory(botId, categoryName));
+      }
+      await connectDB();
+      const res = await Category.deleteOne({ botId, name: categoryName });
+      if (res.deletedCount === 0) return NextResponse.json({ success: false, error: "Kategori tidak ditemukan." }, { status: 404 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (!productId) return NextResponse.json({ success: false, error: "id required" }, { status: 400 });
     if (placeholderMode) {
       return NextResponse.json(await deletePlaceholderProduct(botId, productId));
     }

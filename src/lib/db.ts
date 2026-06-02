@@ -489,6 +489,13 @@ const placeholderDb = {
     return { success: true, data: category };
   },
 
+  deleteCategory: async (botId: number, categoryName: string) => {
+    const index = placeholderCategories.findIndex((item) => item.botId === botId && item.name === categoryName);
+    if (index === -1) return { success: false, error: "Category not found." };
+    placeholderCategories.splice(index, 1);
+    return { success: true };
+  },
+
   addProductToCategory: async (botId: number, categoryName: string, productId: string) => {
     let category = placeholderCategories.find((item) => item.botId === botId && item.name === categoryName);
     if (!category) {
@@ -568,6 +575,7 @@ export const addProductSold = async (botId: string | number, productId: string, 
 export const getCategory = async (botId: string | number) => runDb("getCategory", botId);
 export const addCategory = async (botId: string | number, categoryName: string, productIds: string[] = []) => runDb("addCategory", botId, categoryName, productIds);
 export const updateCategory = async (botId: string | number, categoryName: string, productIds: string[]) => runDb("updateCategory", botId, categoryName, productIds);
+export const deleteCategory = async (botId: string | number, categoryName: string) => runDb("deleteCategory", botId, categoryName);
 export const addProductToCategory = async (botId: string | number, categoryName: string, productId: string) => runDb("addProductToCategory", botId, categoryName, productId);
 export const updateProduct = async (botId: string | number, productId: string, updates: Record<string, any>) => runDb("updateProduct", botId, productId, updates);
 export const db = { getSuppliers, placeholderMode };

@@ -355,6 +355,27 @@ function InventoryContent() {
     }
   };
 
+  const handleDeleteCategory = (name: string) => {
+    if (confirm(`Delete category '${name}'?`)) {
+      (async () => {
+        try {
+          const BOT_ID = 220208;
+          const res = await fetch(`/api/products?botId=${BOT_ID}&name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+          const json = await res.json();
+          if (json.success) {
+            loadData();
+            toast({ title: 'Deleted', description: `Category '${name}' removed`, variant: 'destructive' });
+          } else {
+            toast({ title: 'Error', description: json.error || 'Failed to delete category', variant: 'destructive' });
+          }
+        } catch (e) {
+          console.error(e);
+          toast({ title: 'Error', description: 'Request failed', variant: 'destructive' });
+        }
+      })();
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       sku: '',
@@ -518,11 +539,22 @@ function InventoryContent() {
                 router.replace(`/inventory?category=${encodeURIComponent(c.name)}`);
               }}>
                 <CardHeader className="p-3 md:p-6 pb-2">
-                  <div className="flex justify-between items-start">
+                  <div className="flex justify-between items-start gap-2">
                     <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 font-mono text-[9px] md:text-[10px] tracking-tighter px-1 rounded-sm">
                       {c.count}
                     </Badge>
                     <div className="text-right text-xs text-muted-foreground">Category</div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-auto h-7 w-7 md:h-8 md:w-8 text-destructive hover:bg-destructive/10 rounded-full"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteCategory(c.name);
+                      }}
+                    >
+                      <Trash className="w-3 h-3 md:w-4 md:h-4" />
+                    </Button>
                   </div>
                   <CardTitle className="text-xs md:text-lg font-headline mt-2 line-clamp-1 text-white">{c.name}</CardTitle>
                   <CardDescription className="text-[10px] md:text-xs line-clamp-2 text-muted-foreground">{c.products && c.products.length} products</CardDescription>
